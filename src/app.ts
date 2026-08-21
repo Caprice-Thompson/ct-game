@@ -32,6 +32,7 @@ import {
 import { Environment } from "./environment";
 import { Player } from "./player";
 import { Hud } from "./ui";
+import { PlayerInput } from "./inputController";
 
 //enum for states
 enum State {
@@ -728,7 +729,8 @@ class App {
     shadowGenerator.darkness = 0.4;
 
     //Create the player
-    this._player = new Player(this.assets, scene, shadowGenerator); //dont have inputs yet so we dont need to pass it in
+    const input = new PlayerInput(scene);
+    this._player = new Player(this.assets, scene, shadowGenerator, input);
   }
 }
 new App();
