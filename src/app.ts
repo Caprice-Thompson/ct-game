@@ -20,6 +20,10 @@ import {
   Effect,
   PostProcess,
   AbstractSound,
+  Space,
+  Axis,
+  Vector4,
+  Texture,
 } from "@babylonjs/core";
 import {
   AdvancedDynamicTexture,
@@ -269,6 +273,20 @@ class App {
     //--GUI--
     const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
     const mainBtn = Button.CreateSimpleButton("mainmenu", "MAIN MENU");
+    const startAgainBtn = Button.CreateSimpleButton(
+      "startagain",
+      "START AGAIN",
+    );
+    startAgainBtn.width = 0.2;
+    startAgainBtn.height = "40px";
+    startAgainBtn.color = "white";
+    startAgainBtn.top = "14px";
+    startAgainBtn.thickness = 0;
+    startAgainBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    guiMenu.addControl(startAgainBtn);
+    startAgainBtn.onPointerUpObservable.add(() => {
+      this._goToStart();
+    });
     mainBtn.width = 0.2;
     mainBtn.height = "40px";
     mainBtn.color = "white";
@@ -652,60 +670,85 @@ class App {
 
   private async _loadCharacterAssets(scene: Scene) {
     async function loadCharacter() {
-      //collision mesh
+      // collision mesh (declared first so the car body/wheels can parent to it)
       const outer = MeshBuilder.CreateBox(
         "outer",
-        { width: 2, depth: 1, height: 3 },
+        { width: 6, depth: 1, height: 2 },
         scene,
       );
       outer.isVisible = false;
       outer.isPickable = false;
       outer.checkCollisions = true;
-
+      outer.useVertexColors = true;
       //move origin of box collider to the bottom of the mesh (to match imported player mesh)
       outer.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0));
       //for collisions
       outer.ellipsoid = new Vector3(1, 1.5, 1);
       outer.ellipsoidOffset = new Vector3(0, 1.5, 0);
-
       outer.rotationQuaternion = new Quaternion(0, 1, 0, 0); // rotate the player mesh 180 since we want to see the back of the player
-      var box = MeshBuilder.CreateBox(
-        "Small1",
-        {
-          width: 0.5,
-          depth: 0.5,
-          height: 0.25,
-          faceColors: [
-            new Color4(0, 0, 0, 1),
-            new Color4(0, 0, 0, 1),
-            new Color4(0, 0, 0, 1),
-            new Color4(0, 0, 0, 1),
-            new Color4(0, 0, 0, 1),
-            new Color4(0, 0, 0, 1),
-          ],
-        },
+
+      // car body
+      const bodyMaterial = new StandardMaterial("body_mat", scene);
+      bodyMaterial.diffuseColor = new Color3(1.0, 0.25, 0.25);
+      bodyMaterial.backFaceCulling = false;
+      const side = [
+        new Vector3(-4, 2, -2),
+        new Vector3(4, 2, -2),
+        new Vector3(5, -2, -2),
+        new Vector3(-7, -2, -2),
+      ];
+      side.push(side[0]); // close trapezium
+      const extrudePath = [new Vector3(0, 0, 0), new Vector3(0, 0, 4)];
+      const carBody = MeshBuilder.ExtrudeShape(
+        "carBody",
+        { shape: side, path: extrudePath, cap: Mesh.CAP_ALL },
         scene,
       );
-      box.position.y = 1.5;
-      box.position.z = 1;
+      carBody.material = bodyMaterial;
+      carBody.isPickable = false;
+      carBody.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0));
+      carBody.parent = outer;
 
-      var body = MeshBuilder.CreateCylinder(
-        "body",
-        { height: 3, diameterTop: 2, diameterBottom: 2 },
+      // wheels
+      const wheelMaterial = new StandardMaterial("wheel_mat", scene);
+      const wheelTexture = new Texture(
+        "https://i.imgur.com/ZUWbT6L.png",
         scene,
       );
-      var bodymtl = new StandardMaterial("red", scene);
-      bodymtl.diffuseColor = new Color3(0.8, 0.5, 0.5);
-      body.material = bodymtl;
-      body.isPickable = false;
-      body.bakeTransformIntoVertices(Matrix.Translation(0, 1.5, 0)); // simulates the imported mesh's origin
+      wheelMaterial.diffuseTexture = wheelTexture;
 
-      //parent the meshes
-      box.parent = body;
-      body.parent = outer;
-      //return the mesh and animations
+      const faceColors: Color4[] = [];
+      faceColors[1] = new Color4(0, 0, 0, 1);
+
+      const faceUV: Vector4[] = [];
+      faceUV[0] = new Vector4(0, 0, 1, 1);
+      faceUV[2] = new Vector4(0, 0, 1, 1);
+
+      const wheelFI = MeshBuilder.CreateCylinder(
+        "wheelFI",
+        { diameter: 3, height: 1, tessellation: 24, faceColors, faceUV },
+        scene,
+      );
+      wheelFI.material = wheelMaterial;
+      wheelFI.rotate(Axis.X, Math.PI / 2, Space.WORLD);
+      wheelFI.parent = carBody;
+      wheelFI.position = new Vector3(-4.5, -2, -2.8);
+
+      const wheelFO = wheelFI.createInstance("FO");
+      wheelFO.parent = carBody;
+      wheelFO.position = new Vector3(-4.5, -2, 2.8);
+
+      const wheelRI = wheelFI.createInstance("RI");
+      wheelRI.parent = carBody;
+      wheelRI.position = new Vector3(2.5, -2, -2.8);
+
+      const wheelRO = wheelFI.createInstance("RO");
+      wheelRO.parent = carBody;
+      wheelRO.position = new Vector3(2.5, -2, 2.8);
+
       return {
         mesh: outer as Mesh,
+        wheels: [wheelFI, wheelFO, wheelRI, wheelRO],
       };
     }
     return loadCharacter().then((assets) => {
@@ -731,6 +774,14 @@ class App {
     //Create the player
     const input = new PlayerInput(scene);
     this._player = new Player(this.assets, scene, shadowGenerator, input);
+
+    // Spin the wheels for visual effect; Player owns all position/rotation/jump control
+    const wheels = this.assets.wheels;
+    scene.registerAfterRender(() => {
+      for (const wheel of wheels) {
+        wheel.rotate(Axis.Z, Math.PI / 32, Space.LOCAL);
+      }
+    });
   }
 }
 new App();
