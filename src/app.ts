@@ -263,7 +263,7 @@ class App {
     //dont detect any inputs from this ui while the game is loading
     scene.detachControl();
 
-    //create a simple button
+    //create a simple button, hidden until the player actually loses (falls off the platform)
     const loseBtn = Button.CreateSimpleButton("lose", "LOSE");
     loseBtn.width = 0.2;
     loseBtn.height = "40px";
@@ -271,6 +271,7 @@ class App {
     loseBtn.top = "-14px";
     loseBtn.thickness = 0;
     loseBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    loseBtn.isVisible = false;
     playerUI.addControl(loseBtn);
 
     //this handles interactions with the start button attached to the scene
@@ -281,6 +282,14 @@ class App {
 
     //primitive character and setting
     this._initializeGame(scene);
+
+    // Reveal the LOSE button once the player falls off the platform
+    const fallThreshold = -5;
+    scene.onBeforeRenderObservable.add(() => {
+      if (!loseBtn.isVisible && this.assets.mesh.position.y < fallThreshold) {
+        loseBtn.isVisible = true;
+      }
+    });
 
     //--WHEN SCENE FINISHED LOADING--
     await scene.whenReadyAsync();

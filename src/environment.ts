@@ -25,5 +25,20 @@ export class Environment {
     box.material = whiteMaterial;
     box.isPickable = true;
     box.checkCollisions = true;
+
+    // Floating step: a jumpable platform above the ground, using the same
+    // collision-mesh approach as the ground
+    const stepMaterial = new StandardMaterial("stepMaterial", this._scene);
+    stepMaterial.diffuseColor = new Color3(0.6, 0.6, 0.65);
+
+    const step = MeshBuilder.CreateBox(
+      "step",
+      { width: 4, depth: 4, height: 0.5 },
+      this._scene,
+    );
+    step.position.set(4, 1.5, 4);
+    step.material = stepMaterial;
+    step.isPickable = true;
+    step.checkCollisions = true;
   }
 }
