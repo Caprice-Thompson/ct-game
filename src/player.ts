@@ -1,9 +1,12 @@
 import {
   Mesh,
+  MeshBuilder,
   Ray,
   Quaternion,
   Scene,
   ShadowGenerator,
+  StandardMaterial,
+  Texture,
   TransformNode,
   UniversalCamera,
   Vector3,
@@ -31,6 +34,11 @@ export class Player extends TransformNode {
   private _camRoot!: TransformNode;
   private _yTilt!: TransformNode;
 
+  //Parallax background
+  private _bgPlane!: Mesh;
+  private _bgTexture!: Texture;
+  private static readonly PARALLAX_SPEED = 0.02;
+
   static readonly ORIGINAL_TILT: Vector3 = new Vector3(
     0.5934119456780721,
     0,
@@ -46,6 +54,7 @@ export class Player extends TransformNode {
     super("player", scene);
     this.scene = scene;
     this._setupPlayerCamera();
+    this._createParallaxBackground();
 
     this.mesh = assets.mesh;
     this.mesh.parent = this;
@@ -57,6 +66,7 @@ export class Player extends TransformNode {
       this.updateFromControls();
       this.updateGroundDetection();
       this._updateCamera();
+      this._updateParallaxBackground();
     });
   }
 
@@ -171,5 +181,34 @@ export class Player extends TransformNode {
       new Vector3(this.mesh.position.x, centerPlayer, this.mesh.position.z),
       0.4,
     );
+  }
+
+  private _createParallaxBackground(): void {
+    this._bgPlane = MeshBuilder.CreatePlane(
+      "bgPlane",
+      { width: 100, height: 50 },
+      this.scene,
+    );
+    this._bgPlane.isPickable = false;
+    // Parent to the camera so it always stays 50 units in front of it, facing back at it
+    this._bgPlane.parent = this.camera;
+    this._bgPlane.position = new Vector3(0, 0, 50);
+
+    const bgMaterial = new StandardMaterial("bgMat", this.scene);
+    bgMaterial.backFaceCulling = false;
+    this._bgTexture = new Texture("underwater.jpg", this.scene);
+    this._bgTexture.wrapU = Texture.WRAP_ADDRESSMODE;
+    this._bgTexture.wrapV = Texture.WRAP_ADDRESSMODE;
+    bgMaterial.diffuseTexture = this._bgTexture;
+    bgMaterial.disableLighting = true; // prevents scene lights from affecting background
+    this._bgPlane.material = bgMaterial;
+  }
+
+  private _updateParallaxBackground(): void {
+    // Shift texture UVs based on camera position to create motion flow
+    this._bgTexture.uOffset =
+      this.camera.globalPosition.x * Player.PARALLAX_SPEED;
+    this._bgTexture.vOffset =
+      this.camera.globalPosition.y * Player.PARALLAX_SPEED;
   }
 }
