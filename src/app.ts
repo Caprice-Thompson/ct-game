@@ -14,6 +14,7 @@ import {
   StandardMaterial,
   Color3,
   PointLight,
+  DirectionalLight,
   ShadowGenerator,
   Effect,
   PostProcess,
@@ -27,6 +28,7 @@ import {
   TextBlock,
 } from "@babylonjs/gui";
 import { Environment } from "./environment";
+import { FALL_THRESHOLD, fallingCubeDelays, hasLandedOnGoal } from "./gameRules";
 import { Player } from "./player";
 import { PlayerInput } from "./inputController";
 
@@ -36,6 +38,7 @@ enum State {
   GAME = 1,
   LOSE = 2,
   CUTSCENE = 3,
+  WIN = 4,
 }
 
 class App {
@@ -49,6 +52,7 @@ class App {
   private _gamescene!: Scene;
   public assets!: { mesh: Mesh };
   private _transition: boolean = false;
+  private _round: number = 1;
   private _player!: Player;
 
   constructor() {
@@ -155,14 +159,14 @@ class App {
     Effect.RegisterShader(
       "fade",
       "precision highp float;" +
-        "varying vec2 vUV;" +
-        "uniform sampler2D textureSampler; " +
-        "uniform float fadeLevel; " +
-        "void main(void){" +
-        "vec4 baseColor = texture2D(textureSampler, vUV) * fadeLevel;" +
-        "baseColor.a = 1.0;" +
-        "gl_FragColor = baseColor;" +
-        "}",
+      "varying vec2 vUV;" +
+      "uniform sampler2D textureSampler; " +
+      "uniform float fadeLevel; " +
+      "void main(void){" +
+      "vec4 baseColor = texture2D(textureSampler, vUV) * fadeLevel;" +
+      "baseColor.a = 1.0;" +
+      "gl_FragColor = baseColor;" +
+      "}",
     );
 
     let fadeLevel = 1.0;
@@ -215,7 +219,7 @@ class App {
     //--SCENE SETUP--
     this._scene.detachControl();
     let scene = new Scene(this._engine);
-    scene.clearColor = new Color4(1, 1, 1, 1);
+    scene.clearColor = new Color4(0, 1, 1, 1);
     let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
     camera.setTarget(Vector3.Zero());
 
@@ -240,6 +244,60 @@ class App {
     this._state = State.LOSE;
   }
 
+  private async _goToWin(): Promise<void> {
+    this._engine.displayLoadingUI();
+
+    this._scene.detachControl();
+    let scene = new Scene(this._engine);
+    scene.clearColor = new Color4(1, 1, 1, 1);
+    let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
+    camera.setTarget(Vector3.Zero());
+
+    const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+    const winText = new TextBlock("win", "YOU WIN");
+    winText.fontFamily = "Ceviche One";
+    winText.fontSize = "64px";
+    winText.color = "black";
+    winText.top = "-40px";
+    guiMenu.addControl(winText);
+
+    const mainBtn = Button.CreateSimpleButton("mainmenu", "MAIN MENU");
+    mainBtn.width = 0.2;
+    mainBtn.height = "40px";
+    mainBtn.color = "white";
+    mainBtn.background = "black";
+    mainBtn.top = "20px";
+    guiMenu.addControl(mainBtn);
+    mainBtn.onPointerUpObservable.add(() => {
+      this._goToStart();
+    });
+
+    const nextRoundBtn = Button.CreateSimpleButton(
+      "nextround",
+      "PLAY NEXT ROUND",
+    );
+    nextRoundBtn.width = 0.3;
+    nextRoundBtn.height = "40px";
+    nextRoundBtn.color = "white";
+    nextRoundBtn.background = "black";
+    nextRoundBtn.top = "80px";
+    guiMenu.addControl(nextRoundBtn);
+    nextRoundBtn.onPointerUpObservable.add(() => {
+      this._round++;
+      this._engine.displayLoadingUI();
+      this._setUpGame().then(() => {
+        this._goToGame();
+      });
+    });
+
+    await scene.whenReadyAsync();
+    this._engine.hideLoadingUI();
+    this._scene.dispose();
+    this._scene = scene;
+    this._state = State.WIN;
+  }
+
   private async _setUpGame() {
     //--CREATE SCENE--
     let scene = new Scene(this._engine);
@@ -248,7 +306,7 @@ class App {
     //--CREATE ENVIRONMENT--
     const environment = new Environment(scene);
     //Load environment and character assets
-    await environment.load(); //environment
+    await environment.load(this._round); //environment
     await this._loadCharacterAssets(scene); //character
   }
 
@@ -258,36 +316,27 @@ class App {
     let scene = this._gamescene;
     scene.clearColor = new Color4(1, 1, 1, 1);
 
-    //--GUI--
-    const playerUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
     //dont detect any inputs from this ui while the game is loading
     scene.detachControl();
-
-    //create a simple button, hidden until the player actually loses (falls off the platform)
-    const loseBtn = Button.CreateSimpleButton("lose", "LOSE");
-    loseBtn.width = 0.2;
-    loseBtn.height = "40px";
-    loseBtn.color = "white";
-    loseBtn.top = "-14px";
-    loseBtn.thickness = 0;
-    loseBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    loseBtn.isVisible = false;
-    playerUI.addControl(loseBtn);
-
-    //this handles interactions with the start button attached to the scene
-    loseBtn.onPointerDownObservable.add(() => {
-      this._goToLose();
-      scene.detachControl(); //observables disabled
-    });
 
     //primitive character and setting
     this._initializeGame(scene);
 
-    // Reveal the LOSE button once the player falls off the platform
-    const fallThreshold = -5;
+    // Falling off the platform sends the player straight back to the main menu.
+    // The yellow step (step5) is the goal; its height rises each round.
+    const goal = scene.getMeshByName("step5")!;
+    let won = false;
+    let lost = false;
     scene.onBeforeRenderObservable.add(() => {
-      if (!loseBtn.isVisible && this.assets.mesh.position.y < fallThreshold) {
-        loseBtn.isVisible = true;
+      const playerPos = this.assets.mesh.position;
+      if (!lost && !won && playerPos.y < FALL_THRESHOLD) {
+        lost = true;
+        this._goToStart();
+      }
+      // Win when the player lands on the yellow step
+      if (!won && hasLandedOnGoal(playerPos, goal.position)) {
+        won = true;
+        this._goToWin();
       }
     });
 
@@ -298,8 +347,43 @@ class App {
     this._state = State.GAME;
     this._scene = scene;
     this._engine.hideLoadingUI();
-    //the game is ready, attach control back
     this._scene.attachControl();
+
+    // Falling cubes
+    const fallingMat = new StandardMaterial("falling_mat", scene);
+    fallingMat.diffuseColor = new Color3(0.23862, 0.41, 0.2296);
+
+    const groundY = 1; // cube is 2 units tall → centre at y=1 means bottom flush with y=0
+    const gravity = 0.00005; // change speed of falling
+    const startHeight = 30;
+
+    const fallingCubes = fallingCubeDelays(0, 1000, 40000).map((delay) => ({
+      x: Math.random() * 24 - 12, // between -12 and 12
+      z: Math.random() * 24 - 12,
+      delay,
+    })).map((spec) => {
+      const cube = MeshBuilder.CreateBox("fallingCube", { size: 2 }, scene);
+      cube.isPickable = false;
+      // Solid obstacle
+      cube.checkCollisions = true;
+      cube.material = fallingMat;
+      cube.position = new Vector3(spec.x, startHeight, spec.z);
+      return { cube, delay: spec.delay, velocity: 0, landed: false };
+    });
+
+    const roundStart = performance.now();
+    scene.registerBeforeRender(() => {
+      const elapsed = performance.now() - roundStart;
+      for (const falling of fallingCubes) {
+        if (falling.landed || elapsed < falling.delay) continue;
+        falling.velocity += gravity;
+        falling.cube.position.y -= falling.velocity;
+        if (falling.cube.position.y <= groundY) {
+          falling.cube.position.y = groundY; // snap to rest
+          falling.landed = true;
+        }
+      }
+    });
   }
 
   private async _loadCharacterAssets(scene: Scene): Promise<void> {
@@ -319,7 +403,13 @@ class App {
   }
 
   private _initializeGame(scene: Scene): void {
-    new HemisphericLight("HemiLight", new Vector3(0, 1, 0), scene);
+    // Cool fill from above
+    const hemi = new HemisphericLight("HemiLight", new Vector3(0, 1, 0), scene);
+    hemi.diffuse = new Color3(0.7, 0.8, 1);
+
+    // Warm key light from the opposite side, so the cubes show shaded faces
+    const sun = new DirectionalLight("sun", new Vector3(0.5, -1, 0.5), scene);
+    sun.diffuse = new Color3(1, 0.9, 0.7);
 
     const light = new PointLight("sparklight", new Vector3(0, 0, 0), scene);
     light.diffuse = new Color3(0.086, 0.11, 0.153);
