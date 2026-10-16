@@ -18,6 +18,4 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | `npm run dev` | Start dev server |
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview production build |
-
-
-Shift+Ctrl+Alt+I
+| `npm run test` | run unit tests |
