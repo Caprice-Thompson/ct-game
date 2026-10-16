@@ -1,4 +1,4 @@
-import { Color3, MeshBuilder, Scene, StandardMaterial } from "@babylonjs/core";
+import { Color3, MeshBuilder, Scene, StandardMaterial, Texture } from "@babylonjs/core";
 import { stepsForRound } from "./gameRules";
 
 export class Environment {
@@ -11,9 +11,10 @@ export class Environment {
 
   // round 1 is the base layout; each later round stretches the vertical gaps
   public async load(round = 1) {
-    // ground material
-    const whiteMaterial = new StandardMaterial("whiteMaterial", this._scene);
-    whiteMaterial.diffuseColor = new Color3(0.37506666666666655, 0.58, 0.27259999999999995);
+    const groundMaterial = new StandardMaterial("groundMaterial", this._scene);
+    groundMaterial.specularColor = new Color3(0, 0, 0);
+    groundMaterial.diffuseColor = new Color3(1, 1, 1);
+    groundMaterial.disableLighting = true;
 
     const box = MeshBuilder.CreateBox(
       "box",
@@ -21,28 +22,39 @@ export class Environment {
       this._scene,
     );
     box.position.y = -0.2;
-    box.material = whiteMaterial;
+    box.material = groundMaterial;
     box.isPickable = true;
     box.checkCollisions = true;
 
-    // Floating steps
-    const stepMaterial = new StandardMaterial("stepMaterial", this._scene);
-    stepMaterial.diffuseColor = new Color3(0.6, 0.6, 0.65);
+    const applyRetroBlock = (mat: StandardMaterial, diffuse: Color3) => {
+      mat.diffuseColor = diffuse;
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.emissiveColor = diffuse.scale(0.15);
+    };
+
+    const tetrisPalette = [
+      new Color3(0, 0.94, 0.94),
+      new Color3(0, 0, 0.94),
+      new Color3(0.94, 0.63, 0),
+      new Color3(0, 0.94, 0),
+      new Color3(0.63, 0, 0.94),
+      new Color3(0.94, 0, 0),
+    ];
+    const stepMaterials = tetrisPalette.map((color, i) => {
+      const mat = new StandardMaterial(`stepMaterial${i}`, this._scene);
+      applyRetroBlock(mat, color);
+      return mat;
+    });
 
     const yellowStepMaterial = new StandardMaterial(
       "yellowStepMaterial",
       this._scene,
     );
-    yellowStepMaterial.diffuseColor = new Color3(0.95, 0.85, 0.2);
+    applyRetroBlock(yellowStepMaterial, new Color3(0.94, 0.94, 0));
 
-    // Pulse the goal so it reads as the objective: the glow breathes over time
     this._scene.registerBeforeRender(() => {
-      const glow = (Math.sin(performance.now() / 300) + 1) / 2; // 0 to 1
-      yellowStepMaterial.emissiveColor = new Color3(
-        0.6 * glow,
-        0.5 * glow,
-        0.05 * glow,
-      );
+      const glow = (Math.sin(performance.now() / 300) + 1) / 2;
+      yellowStepMaterial.emissiveColor = new Color3(0.35 * glow, 0.35 * glow, 0);
     });
 
     const steps = stepsForRound(round);
@@ -54,7 +66,9 @@ export class Environment {
         this._scene,
       );
       step.position.set(pos.x, pos.y, pos.z);
-      step.material = pos.yellow ? yellowStepMaterial : stepMaterial;
+      step.material = pos.yellow
+        ? yellowStepMaterial
+        : stepMaterials[i % stepMaterials.length];
       step.isPickable = true;
       step.checkCollisions = true;
     });

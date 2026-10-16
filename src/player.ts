@@ -10,6 +10,7 @@ import {
   TransformNode,
   UniversalCamera,
   Vector3,
+  Color3,
 } from "@babylonjs/core";
 import { PlayerInput } from "./inputController";
 
@@ -194,13 +195,16 @@ export class Player extends TransformNode {
     this._bgPlane.parent = this.camera;
     this._bgPlane.position = new Vector3(0, 0, 50);
 
+    this.scene.ambientColor = new Color3(0.12, 0.1, 0.18);
+
     const bgMaterial = new StandardMaterial("bgMat", this.scene);
     bgMaterial.backFaceCulling = false;
+    bgMaterial.diffuseColor = new Color3(1, 1, 1);
     this._bgTexture = new Texture("underwater.jpg", this.scene);
     this._bgTexture.wrapU = Texture.WRAP_ADDRESSMODE;
     this._bgTexture.wrapV = Texture.WRAP_ADDRESSMODE;
     bgMaterial.diffuseTexture = this._bgTexture;
-    bgMaterial.disableLighting = true; // prevents scene lights from affecting background
+    bgMaterial.disableLighting = true;
     this._bgPlane.material = bgMaterial;
   }
 

@@ -3,7 +3,6 @@ import "@babylonjs/inspector";
 import {
   Engine,
   Scene,
-  ArcRotateCamera,
   Vector3,
   HemisphericLight,
   Mesh,
@@ -125,13 +124,16 @@ class App {
     const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
     guiMenu.idealHeight = 720;
 
-    //background image
     const imageRect = new Rectangle("titleContainer");
-    imageRect.width = 0.8;
+    imageRect.width = 1;
+    imageRect.height = 1;
     imageRect.thickness = 0;
     guiMenu.addControl(imageRect);
 
     const startbg = new Image("startbg", "mountains-bg.jpg");
+    startbg.width = 1;
+    startbg.height = 1;
+    startbg.stretch = Image.STRETCH_FILL;
     imageRect.addControl(startbg);
 
     const title = new TextBlock("title", "CT Productions");
@@ -141,7 +143,7 @@ class App {
     title.color = "white";
     title.resizeToFit = true;
     title.top = "14px";
-    title.width = 0.8;
+    title.width = 0.9;
     title.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     imageRect.addControl(title);
 
@@ -153,6 +155,7 @@ class App {
     startBtn.top = "-14px";
     startBtn.thickness = 0;
     startBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    startBtn.hoverCursor = "pointer";
     imageRect.addControl(startBtn);
 
     //set up transition effect : modified version of https://www.babylonjs-playground.com/#2FGYE8#0
@@ -249,7 +252,7 @@ class App {
 
     this._scene.detachControl();
     let scene = new Scene(this._engine);
-    scene.clearColor = new Color4(1, 1, 1, 1);
+    scene.clearColor = new Color4(0.04, 0.03, 0.1, 1);
     let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
     camera.setTarget(Vector3.Zero());
 
@@ -258,15 +261,15 @@ class App {
     const winText = new TextBlock("win", "YOU WIN");
     winText.fontFamily = "Ceviche One";
     winText.fontSize = "64px";
-    winText.color = "black";
+    winText.color = "#00F0F0";
     winText.top = "-40px";
     guiMenu.addControl(winText);
 
     const mainBtn = Button.CreateSimpleButton("mainmenu", "MAIN MENU");
     mainBtn.width = 0.2;
     mainBtn.height = "40px";
-    mainBtn.color = "white";
-    mainBtn.background = "black";
+    mainBtn.color = "#F0F000";
+    mainBtn.background = "#1a1030";
     mainBtn.top = "20px";
     guiMenu.addControl(mainBtn);
     mainBtn.onPointerUpObservable.add(() => {
@@ -277,10 +280,10 @@ class App {
       "nextround",
       "PLAY NEXT ROUND",
     );
-    nextRoundBtn.width = 0.3;
+    nextRoundBtn.width = 0.2;
     nextRoundBtn.height = "40px";
-    nextRoundBtn.color = "white";
-    nextRoundBtn.background = "black";
+    nextRoundBtn.color = "#F0F000";
+    nextRoundBtn.background = "#1a1030";
     nextRoundBtn.top = "80px";
     guiMenu.addControl(nextRoundBtn);
     nextRoundBtn.onPointerUpObservable.add(() => {
@@ -314,7 +317,7 @@ class App {
     //--SETUP SCENE--
     this._scene.detachControl();
     let scene = this._gamescene;
-    scene.clearColor = new Color4(1, 1, 1, 1);
+    scene.clearColor = new Color4(0.04, 0.03, 0.1, 1);
 
     //dont detect any inputs from this ui while the game is loading
     scene.detachControl();
@@ -350,8 +353,20 @@ class App {
     this._scene.attachControl();
 
     // Falling cubes
-    const fallingMat = new StandardMaterial("falling_mat", scene);
-    fallingMat.diffuseColor = new Color3(0.23862, 0.41, 0.2296);
+    const fallingPalette = [
+      new Color3(0.94, 0, 0),
+      new Color3(0.94, 0.63, 0),
+      new Color3(0, 0.94, 0),
+      new Color3(0.63, 0, 0.94),
+      new Color3(0, 0, 0.94),
+    ];
+    const fallingMaterials = fallingPalette.map((color, i) => {
+      const mat = new StandardMaterial(`falling_mat_${i}`, scene);
+      mat.diffuseColor = color;
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.emissiveColor = color.scale(0.12);
+      return mat;
+    });
 
     const groundY = 1; // cube is 2 units tall → centre at y=1 means bottom flush with y=0
     const gravity = 0.00005; // change speed of falling
@@ -366,7 +381,8 @@ class App {
       cube.isPickable = false;
       // Solid obstacle
       cube.checkCollisions = true;
-      cube.material = fallingMat;
+      cube.material =
+        fallingMaterials[Math.floor(Math.random() * fallingMaterials.length)];
       cube.position = new Vector3(spec.x, startHeight, spec.z);
       return { cube, delay: spec.delay, velocity: 0, landed: false };
     });
@@ -396,7 +412,9 @@ class App {
     outer.ellipsoidOffset = new Vector3(0, 1, 0);
 
     const bodyMaterial = new StandardMaterial("body_mat", scene);
-    bodyMaterial.diffuseColor = new Color3(0.09, 0.11, 0.87); // blue
+    bodyMaterial.diffuseColor = new Color3(0, 0.94, 0.94);
+    bodyMaterial.specularColor = new Color3(0, 0, 0);
+    bodyMaterial.emissiveColor = new Color3(0, 0.12, 0.12);
     outer.material = bodyMaterial;
 
     this.assets = { mesh: outer };
@@ -405,19 +423,21 @@ class App {
   private _initializeGame(scene: Scene): void {
     // Cool fill from above
     const hemi = new HemisphericLight("HemiLight", new Vector3(0, 1, 0), scene);
-    hemi.diffuse = new Color3(0.7, 0.8, 1);
+    hemi.intensity = 0.35;
+    hemi.diffuse = new Color3(0.45, 0.5, 0.65);
+    hemi.groundColor = new Color3(0.08, 0.06, 0.12);
 
-    // Warm key light from the opposite side, so the cubes show shaded faces
-    const sun = new DirectionalLight("sun", new Vector3(0.5, -1, 0.5), scene);
-    sun.diffuse = new Color3(1, 0.9, 0.7);
+    const sun = new DirectionalLight("sun", new Vector3(0.35, -1, 0.25), scene);
+    sun.intensity = 0.45;
+    sun.diffuse = new Color3(0.7, 0.75, 0.9);
 
-    const light = new PointLight("sparklight", new Vector3(0, 0, 0), scene);
-    light.diffuse = new Color3(0.086, 0.11, 0.153);
-    light.intensity = 35;
-    light.radius = 1;
+    const light = new PointLight("sparklight", new Vector3(0, 6, 0), scene);
+    light.diffuse = new Color3(0.5, 0.55, 0.75);
+    light.intensity = 6;
+    light.radius = 35;
 
-    const shadowGenerator = new ShadowGenerator(1024, light);
-    shadowGenerator.darkness = 0.4;
+    const shadowGenerator = new ShadowGenerator(512, sun);
+    shadowGenerator.darkness = 0.55;
 
     const input = new PlayerInput(scene);
     this._player = new Player(this.assets, scene, shadowGenerator, input);
